@@ -43,11 +43,11 @@ class CoProDataset(Dataset):
         
         # Compute embeddings using the provided text encoder.
         # It's assumed that text_encoder.forward returns a tensor of shape [N, embedding_dim].
-        self.safe_embeddings = text_encoder(self.safe_prompts)  # [N, D]
-        self.unsafe_embeddings = text_encoder(self.unsafe_prompts)  # [N, D]
-        
-        # Compute nudity vector using the nudity prompt
-        self.nudity_vector = text_encoder.encode(nudity_prompt)  # [D]
+        with torch.no_grad():
+            self.safe_embeddings = text_encoder(self.safe_prompts)  # [N, D]
+            self.unsafe_embeddings = text_encoder(self.unsafe_prompts)  # [N, D]
+            self.nudity_vector = text_encoder(nudity_prompt)  # [D]
+
         # Normalize the nudity vector
         self.normalized_nudity = self.nudity_vector / torch.norm(self.nudity_vector)
         
