@@ -60,6 +60,9 @@ This completes the pipeline by:
 # From the idl-project directory:
 python data/generate_target_vectors.py --embeddings_dir "embeddings" --output_dir "data/target_vectors" --scaling_factor 200.0 --update_dataset --data_path "CoPro Dataset/CoPro_v1.0.json"
 ```
+Remember, initially we created the dataset in dataset.py with init function create a tuple of 3 items, (None, unsafe, safe). 
+
+
 This step replaces the `None` values in the dataset tuples with the generated target vectors. When the `--update_dataset` flag is passed to `generate_target_vectors.py`, the script:
 - Loads the dataset from the specified path
 - Replaces each `None` in the first position with the corresponding target vector
