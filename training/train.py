@@ -16,15 +16,19 @@ def train(config: Dict[str, Any]) -> None:
     # See Algorithm 2 of https://arxiv.org/abs/2501.18877
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dataset = CoProDataset(data_path=config["data_path"])
+    text_encoder = TextEncoder().to(device)
+    text_encoder.train()
+
+    dataset = CoProDataset(
+        data_path=config["data_path"],
+        text_encoder=text_encoder
+    )
+
     dataloader = DataLoader(
         dataset=dataset,
         batch_size=config["batch_size"],
         shuffle=True
     )
-
-    text_encoder = TextEncoder().to(device)
-    text_encoder.train()
 
     optimizer = AdamW(
         text_encoder.parameters(),
