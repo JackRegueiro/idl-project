@@ -1,39 +1,18 @@
+import os
 import torch
 from diffusers import DiffusionPipeline
-from utils.metrics import compute_fid, compute_clip_score
-from utils.datasets import load_coco, generate_fake_images
+from evaluation.utils.metrics import compute_fid, compute_clip_score
+from evaluation.utils.datasets import load_coco
 from tqdm import tqdm
-import gc
-import os
 from datetime import datetime
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# config dict for local testing
-config = {
-    "dataset": {
-        "name": "sayakpaul/coco-30-val-2014",
-        "sample_size": 50,  # Smaller sample for faster testing
-        "seed": 42
-    },
-    "model": {
-        "diffusion_model_name": "stable-diffusion-v1-5/stable-diffusion-v1-5"
-    },
-    "generation": {
-        "batch_size": 1,
-        "num_inference_steps": 20,  # Fewer steps for faster generation
-        "guidance_scale": 7.5,
-        "num_eval_samples": 1  # Generate fewer images for quick testing
-    },
-    "output": {
-        "save_images": True,
-        "output_dir": "./generated_images"
-    }
-}
 
 def evaluate_model(config: dict) -> None:
     # Create output directory if it doesn't exist
     output_dir = config["output"]["output_dir"]
-    if config["output"]["save_images"]:
+    if config["output"]["save_generated_images"]:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         image_dir = os.path.join(output_dir, f"eval_{timestamp}")
         os.makedirs(image_dir, exist_ok=True)
@@ -45,17 +24,18 @@ def evaluate_model(config: dict) -> None:
     images, prompts = load_coco(
         dataset_name=config["dataset"]["name"], 
         sample_size=config["dataset"]["sample_size"], 
-        seed=config["dataset"]["seed"]
+        seed=config["dataset"]["seed"],
+        cache_dir=config["dataset"]["cache_dir"]
     )
+
+    # Load the pre-trained Stable Diffusion pipeline
+    pipe = DiffusionPipeline.from_pretrained(config["model"]["diffusion_model_name"])
+    pipe = pipe.to(device)
 
     # Load the fine-tuned text encoder
     # text_encoder = TextEncoder()
     # text_encoder.load_state_dict(torch.load(config.get("model_save_path", "./trained_text_encoder.pth")))
     # text_encoder.eval()
-    
-    # Load the pre-trained Stable Diffusion pipeline
-    pipe = DiffusionPipeline.from_pretrained(config["model"]["diffusion_model_name"])
-    pipe = pipe.to(device)
     
     # Replace the pipeline's text encoder with your fine-tuned version
     # (This assumes compatibility between your text encoder and the pipeline's interface.)
@@ -86,7 +66,7 @@ def evaluate_model(config: dict) -> None:
             generated_images.append(image)
             
             # Save the image if configured
-            if config["output"]["save_images"]:
+            if config["output"]["save_generated_images"]:
                 # Create a filename with index and truncated prompt
                 prompt_text = batch_prompts[j]
                 # Clean up prompt for filename (limit length and remove invalid chars)
@@ -117,4 +97,27 @@ def evaluate_model(config: dict) -> None:
 
 
 if __name__ == "__main__":
-    evaluate_model(config)
+    # config dict for local testing
+    config = {
+        "dataset": {
+            "name": "sayakpaul/coco-30-val-2014",
+            "sample_size": 2,  # Smaller sample for faster testing
+            "seed": 42, # for data sampling
+            "cache_dir": os.path.join(BASE_DIR, "data", "coco")
+        },
+        "model": {
+            "diffusion_model_name": "stable-diffusion-v1-5/stable-diffusion-v1-5"
+        },
+        "generation": {
+            "batch_size": 2,
+            "num_inference_steps": 20,  # Fewer steps for faster generation
+            "guidance_scale": 7.5,
+            "num_eval_samples": 2  # Generate fewer images for quick testing
+        },
+        "output": {
+            "save_generated_images": True,
+            "output_dir": "./generated_images"
+        }
+    }
+    print(os.path.join(BASE_DIR, "data", "coco"))
+    # evaluate_model(config)
