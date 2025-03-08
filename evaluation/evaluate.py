@@ -6,6 +6,8 @@ from evaluation.utils.datasets import load_coco
 from tqdm import tqdm
 from datetime import datetime
 
+from models.text_encoder import TextEncoder
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -33,13 +35,16 @@ def evaluate_model(config: dict) -> None:
     pipe = pipe.to(device)
 
     # Load the fine-tuned text encoder
-    # text_encoder = TextEncoder()
-    # text_encoder.load_state_dict(torch.load(config.get("model_save_path", "./trained_text_encoder.pth")))
-    # text_encoder.eval()
+    text_encoder = TextEncoder()
+
+    # Load the state dictionary
+    state_dict = torch.load(config["model_save_path"])
+    text_encoder.load_state_dict(state_dict)
+    text_encoder.eval()
     
     # Replace the pipeline's text encoder with your fine-tuned version
     # (This assumes compatibility between your text encoder and the pipeline's interface.)
-    # pipe.text_encoder = text_encoder
+    pipe.text_encoder = text_encoder
     
     
     # Define parameters for generation
