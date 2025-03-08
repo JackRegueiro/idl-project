@@ -6,3 +6,6 @@ __pycache__
 
 # Eric's local dataset folder
 # CoPro Dataset/*
+
+# EDA visualizations
+data/eda_visualizations/*.png
