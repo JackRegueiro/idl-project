@@ -6,8 +6,8 @@ from tqdm import tqdm
 import random
 
 
-def load_coco(dataset_name="sayakpaul/coco-30-val-2014", sample_size=10000, seed=42):
-    dataset_dict = load_dataset(dataset_name)
+def load_coco(dataset_name="sayakpaul/coco-30-val-2014", sample_size=10000, seed=42, cache_dir=None):
+    dataset_dict = load_dataset(dataset_name, cache_dir=cache_dir)
     dataset = dataset_dict["train"]
 
     if sample_size:
