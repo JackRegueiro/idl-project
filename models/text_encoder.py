@@ -18,6 +18,9 @@ class TextEncoder(torch.nn.Module):
         super(TextEncoder, self).__init__()
         self.tokenizer = CLIPTokenizer.from_pretrained(model_name)
         self.model = CLIPTextModel.from_pretrained(model_name)
+
+        for param in self.model.parameters():
+            param.requires_grad = True
         
         # Move to GPU if available
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
