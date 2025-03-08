@@ -47,25 +47,13 @@ class TextEncoder(torch.nn.Module):
             truncation=True
         )
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        # Extract embeddings
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            
-        # Extract the last hidden state
+        outputs = self.model(**inputs)  # No torch.no_grad() here!
         last_hidden_state = outputs.last_hidden_state
-        
-        # Extract the embedding of the [EOS] token (the last token)
-        # This is how Stable Diffusion uses CLIP embeddings
         eos_token_idx = inputs['attention_mask'].sum(dim=1) - 1
         batch_size = eos_token_idx.shape[0]
-        embedding = torch.stack([
-            last_hidden_state[i, eos_token_idx[i]] 
-            for i in range(batch_size)
-        ])
-        
-        # Return embedding and move to CPU if needed
-        return embedding.squeeze(0).cpu()
+        # Extract the embedding for the [EOS] token for each sample
+        embedding = torch.stack([last_hidden_state[i, eos_token_idx[i]] for i in range(batch_size)])
+        return embedding
 
     def forward(self, texts: Union[List[str], str]) -> torch.Tensor:
         """
