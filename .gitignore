@@ -3,3 +3,6 @@ generated_images
 __pycache__
 evaluation/data
 .DS_Store
+Imp/
+test_asr.py 
+test_asr_mock.py
