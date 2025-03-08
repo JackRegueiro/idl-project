@@ -22,6 +22,7 @@ multidict==6.1.0
 multiprocess==0.70.16
 networkx==3.4.2
 numpy==2.2.3
+# numpy==1.24.3 # Eric's local numpy version
 packaging==24.2
 pandas==2.2.3
 pillow==11.1.0
@@ -38,8 +39,10 @@ setuptools==75.8.0
 six==1.17.0
 sympy==1.13.1
 tokenizers==0.21.0
-torch==2.6.0
-torchvision==0.21.0
+torch==2.6.0 # Note from Eric: I had to downgrade torch to 2.2.2 to get this to work
+# torch==2.2.2
+torchvision==0.21.0 # # Note from Eric: I had to downgrade torchvision to 0.17.2 to get this to work
+# torchvision==0.17.2 # 0.17.2 depends on torch==2.2.2
 tqdm==4.67.1
 transformers==4.49.0
 typing_extensions==4.12.2
