@@ -1,8 +1,18 @@
 fake_generated_images
 generated_images
 __pycache__
+./data/sayakpaul___coco-30-val-2014/*
+*.DS_Store
+
+# Eric's local dataset folder
+# CoPro Dataset/*
+
+# EDA visualizations
+data/eda_visualizations/*.png
 evaluation/data
 .DS_Store
+
+
 Imp/
 test_asr.py 
 test_asr_mock.py
