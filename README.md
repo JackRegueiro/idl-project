@@ -37,7 +37,7 @@ This generates visualizations of the dataset distribution, concept frequencies, 
 #### 3. Generate Embeddings
 ```bash
 # From the idl-project directory:
-python data/load_clip_encoder.py --data_path "CoPro Dataset/CoPro_v1.0.json" --save_dir "./data/embeddings"
+python data/load_clip_encoder.py 
 ```
 This creates four embedding files in `./data/embeddings/`:
 - `safe_embeddings.pt`
@@ -48,7 +48,7 @@ This creates four embedding files in `./data/embeddings/`:
 #### 4. Generate Target Vectors
 ```bash
 # From the idl-project directory:
-python data/generate_target_vectors.py --embeddings_dir "embeddings" --output_dir "data/target_vectors" --scaling_factor 200.0
+python data/generate_target_vectors.py 
 ```
 This completes the pipeline by:
 - Loading the embeddings from step 3
