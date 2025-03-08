@@ -3,7 +3,6 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from typing import Any, Dict
 from data.dataset import CoProDataset
-from data.target_vector_generation import TargetVectorGenerator
 from models.text_encoder import TextEncoder
 from losses.uen_loss import UENLoss
 
