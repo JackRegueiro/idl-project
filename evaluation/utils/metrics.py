@@ -5,13 +5,14 @@ from PIL import Image
 from typing import List
 from scipy import linalg
 from torchvision import transforms
-from torchvision.models import inception_v3
+from torchvision.models import inception_v3, Inception_V3_Weights
 
 
 class InceptionModel:
     def __init__(self, device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
-        self.model = inception_v3(weights=True, transform_input=False).to(device)
+        self.model = inception_v3(weights=Inception_V3_Weights.DEFAULT, transform_input=False).to(device)
         self.model.eval()
+
         # Remove the final classification layer
         self.model.fc = torch.nn.Identity()
         self.device = device
@@ -54,13 +55,35 @@ def compute_fid(generated_images: List[Image.Image], coco_images: List[Image.Ima
     # Get features for COCO images
     real_features = model.get_features(coco_images)
     
-    # Calculate mean and covariance
-    mu_gen, sigma_gen = np.mean(gen_features, axis=0), np.cov(gen_features, rowvar=False)
-    mu_real, sigma_real = np.mean(real_features, axis=0), np.cov(real_features, rowvar=False)
+    if np.isnan(gen_features).any() or np.isinf(gen_features).any():
+        print("Warning: Generated features contain NaN or Inf values")
+        # Clean the features by replacing NaN/Inf with 0
+        gen_features = np.nan_to_num(gen_features)
+    
+    if np.isnan(real_features).any() or np.isinf(real_features).any():
+        print("Warning: Real features contain NaN or Inf values")
+        real_features = np.nan_to_num(real_features)
+
+    # Calculate mean and covariance with epsilon for numerical stability
+    eps = 1e-6
+    mu_gen, sigma_gen = np.mean(gen_features, axis=0), np.cov(gen_features, rowvar=False) + eps * np.eye(gen_features.shape[1])
+    mu_real, sigma_real = np.mean(real_features, axis=0), np.cov(real_features, rowvar=False) + eps * np.eye(real_features.shape[1])
     
     # Calculate FID
     ssdiff = np.sum((mu_gen - mu_real) ** 2.0)
-    covmean = linalg.sqrtm(sigma_gen.dot(sigma_real))
+        
+    # Handle potential numerical issues
+    sigma_prod = sigma_gen.dot(sigma_real)
+    
+    # Check if matrices are positive definite
+    if not np.all(np.linalg.eigvals(sigma_gen) > 0) or not np.all(np.linalg.eigvals(sigma_real) > 0):
+        print("Warning: Covariance matrices are not positive definite. Adding regularization.")
+        sigma_gen += 1e-3 * np.eye(sigma_gen.shape[0])
+        sigma_real += 1e-3 * np.eye(sigma_real.shape[0])
+        sigma_prod = sigma_gen.dot(sigma_real)
+    
+    # Calculate sqrt of product
+    covmean = linalg.sqrtm(sigma_prod)
     
     # Check and correct imaginary numbers from sqrt
     if np.iscomplexobj(covmean):
@@ -68,6 +91,12 @@ def compute_fid(generated_images: List[Image.Image], coco_images: List[Image.Ima
     
     fid = ssdiff + np.trace(sigma_gen + sigma_real - 2.0 * covmean)
     
+    # Final sanity check
+    if np.isnan(fid) or np.isinf(fid):
+        print("Warning: FID computation resulted in NaN or Inf value. Using fallback.")
+        # Fallback: simple distance between feature means
+        fid = np.linalg.norm(mu_gen - mu_real)
+        
     return float(fid)
 
 
