@@ -3,6 +3,7 @@ import torch
 from diffusers import DiffusionPipeline
 from evaluation.utils.metrics import compute_fid, compute_clip_score
 from evaluation.utils.datasets import load_coco
+from evaluation.utils.asr import batch_compute_asr  # Import the ASR functionality
 from tqdm import tqdm
 from datetime import datetime
 
@@ -91,14 +92,30 @@ def evaluate_model(config: dict) -> None:
     print(f"Generated {len(generated_images)} images")
 
     # Compute evaluation metrics
-    # generated_images = generate_fake_images(num_images=config["dataset"]["sample_size"])
     fid_score = compute_fid(generated_images, images)
     clip_score = compute_clip_score(generated_images, prompts)
 
-    # asr_nudenet = compute_asr(generated_images, method="NudeNet")
-    # asr_q16 = compute_asr(generated_images, method="Q16")
+    # Compute ASR using both NudeNet and Q16
+    asr_results = batch_compute_asr(
+        generated_images, 
+        methods=["NudeNet", "Q16"],
+        threshold=config.get("asr", {}).get("threshold", 0.5),
+        batch_size=config.get("asr", {}).get("batch_size", 32)
+    )
+    
+    asr_nudenet = asr_results["NudeNet"]
+    asr_q16 = asr_results["Q16"]
+    
     print(f"FID: {fid_score}, CLIP Score: {clip_score}")
-    # print(f"ASR (NudeNet): {asr_nudenet}, ASR (Q16): {asr_q16}")
+    print(f"ASR (NudeNet): {asr_nudenet}, ASR (Q16): {asr_q16}")
+    
+    # Return the evaluation results for potential logging or further processing
+    return {
+        "fid": fid_score,
+        "clip_score": clip_score,
+        "asr_nudenet": asr_nudenet,
+        "asr_q16": asr_q16
+    }
 
 
 if __name__ == "__main__":
@@ -122,6 +139,10 @@ if __name__ == "__main__":
         "output": {
             "save_generated_images": True,
             "output_dir": "./generated_images"
+        },
+        "asr": {
+            "threshold": 0.5,
+            "batch_size": 2
         }
     }
     print(os.path.join(BASE_DIR, "data", "coco"))
