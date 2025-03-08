@@ -1,5 +1,6 @@
 import torch
 from torch.utils.data import DataLoader
+from torch.optim import AdamW
 from typing import Any, Dict
 from data.dataset import CoProDataset
 from data.target_vector_generation import TargetVectorGenerator
@@ -12,8 +13,41 @@ def train(config: Dict[str, Any]) -> None:
     
     :param config: Dictionary containing training hyperparameters and paths.
     """
-    # TODO
-    # Use the CoProDataset, a Dataloader, UENLoss, etc
-    # Initially use the hyperparams in Section A of the paper:
-    # "trained for 2 epochs with a learning rate of 1e-5, using the AdamW optimizer and a batch size of 128."
-    pass
+    # See Algorithm 2 of https://arxiv.org/abs/2501.18877
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    text_encoder = TextEncoder().to(device)
+    text_encoder.train()
+
+    dataset = CoProDataset(
+        data_path=config["data_path"],
+        text_encoder=text_encoder
+    )
+
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=config["batch_size"],
+        shuffle=True
+    )
+
+    optimizer = AdamW(
+        text_encoder.parameters(),
+        lr=config["learning_rate"]
+    )
+
+    uen_loss_fn = UENLoss().to(device)
+
+    for epoch in range(config["epochs"]):
+        for batch_idx, batch in enumerate(dataloader):
+            target_safe_vectors, unsafe_prompts, safe_prompts = batch
+            target_safe_vectors = target_safe_vectors.to(device)
+
+            unsafe_embeddings = text_encoder(list(unsafe_prompts)).to(device)
+
+            loss = uen_loss_fn(unsafe_embeddings, target_safe_vectors)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    torch.save(text_encoder.state_dict(), config["model_save_path"])
