@@ -1,6 +1,8 @@
 import os
 import sys
 import argparse
+# Add the parent directory to the path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.dataset import CoProDataset
 
 def main():
@@ -16,6 +18,7 @@ def main():
     
     # Resolve data path
     data_path = os.path.abspath(args.data_path)
+    print(f"Looking for dataset at: {data_path}")
     if not os.path.exists(data_path):
         print(f"Error: Data path '{data_path}' does not exist")
         sys.exit(1)
@@ -25,6 +28,7 @@ def main():
     
     try:
         # Create dataset with the specified category
+        print("Attempting to create CoProDataset instance...")
         dataset = CoProDataset(data_path, category=args.category)
         
         # Print dataset statistics
@@ -50,8 +54,16 @@ def main():
                 except Exception as e:
                     print(f"Error loading {category} category: {e}")
     
+    except ImportError as e:
+        print(f"Import Error: {e}")
+        print("Check that your project structure is correct and you're running from the right directory.")
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"File Not Found Error: {e}")
+        print("Check that the dataset files exist at the specified path.")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Unexpected Error: {type(e).__name__}: {e}")
         sys.exit(1)
     
     print("\nCoProDataset test completed successfully!")
