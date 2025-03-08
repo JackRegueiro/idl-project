@@ -1,0 +1,5 @@
+fake_generated_images
+generated_images
+__pycache__
+evaluation/data
+.DS_Store
