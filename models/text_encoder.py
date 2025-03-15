@@ -26,6 +26,8 @@ class TextEncoder(torch.nn.Module):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = self.model.to(self.device)
         print(f"TextEncoder initialized on device: {self.device}")
+
+        self.config = self.model.config
     
     def encode(self, text: str) -> torch.Tensor:
         """
