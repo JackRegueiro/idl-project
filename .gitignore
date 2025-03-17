@@ -16,3 +16,6 @@ evaluation/data
 Imp/
 test_asr.py 
 test_asr_mock.py
+verify_asr.py
+run_asr_analysis.py
+test_images/
