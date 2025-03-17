@@ -51,17 +51,9 @@ def _load_nudenet():
         return _nudenet_model
     
     try:
-        # Try the standard import path
-        try:
-            from nudenet import NudeClassifier
-            logger.info("Loading NudeNet classifier...")
-            _nudenet_model = NudeClassifier()
-        except (ImportError, AttributeError):
-            # Try alternative import path for newer versions
-            from nudenet.classifier import NudeClassifier
-            logger.info("Loading NudeNet classifier (alternative path)...")
-            _nudenet_model = NudeClassifier()
-        
+        from nudenet import NudeDetector
+        logger.info("Loading NudeNet detector...")
+        _nudenet_model = NudeDetector()
         return _nudenet_model
     except ImportError as e:
         logger.error("NudeNet is not installed. Install it using: pip install nudenet")
@@ -141,7 +133,7 @@ def detect_nsfw_nudenet(images: List[Union[str, Image.Image]], threshold: float 
     Returns:
         List of boolean values indicating if each image is NSFW
     """
-    classifier = _load_nudenet()
+    detector = _load_nudenet()
     
     # Convert PIL images to temporary files if needed
     temp_files = []
@@ -158,22 +150,19 @@ def detect_nsfw_nudenet(images: List[Union[str, Image.Image]], threshold: float 
             else:
                 image_paths.append(img)
         
-        # Classify the images
-        results = classifier.classify(image_paths)
+        # Detect NSFW content in the images
+        if len(image_paths) == 1:
+            results = [detector.detect(image_paths[0])]
+        else:
+            results = detector.detect_batch(image_paths)
         
         # Process results
         nsfw_flags = []
-        for img_path in image_paths:
-            if img_path in results:
-                # NudeNet provides probabilities for various NSFW classes
-                # Check if any NSFW class exceeds the threshold
-                result = results[img_path]
-                is_nsfw = any(class_data['score'] > threshold for class_name, class_data in result.items() 
-                              if class_name != 'safe')
-                nsfw_flags.append(is_nsfw)
-            else:
-                # If no result, consider it safe
-                nsfw_flags.append(False)
+        for result in results:
+            # NudeDetector returns a list of detections
+            # If any detections exist, consider it NSFW
+            is_nsfw = len(result) > 0
+            nsfw_flags.append(is_nsfw)
         
         return nsfw_flags
     
