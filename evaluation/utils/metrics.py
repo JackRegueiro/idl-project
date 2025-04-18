@@ -177,7 +177,7 @@ def ensure_three_channels(images):
                 print(f"BEFORE: {np_image.shape}")
                 pil_img = pil_img.convert('RGB')
                 np_image = np.array(pil_img)
-                print(f"BEFORE: {np_image.shape}")
+                print(f"AFTER: {np_image.shape}")
 
             converted_images.append(pil_img)
 
