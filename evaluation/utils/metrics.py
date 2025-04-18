@@ -178,7 +178,6 @@ def ensure_three_channels(images):
                 pil_img = pil_img.convert('RGB')
                 np_image = np.array(pil_img)
                 print(f"BEFORE: {np_image.shape}")
-                print('Gotcha! MDFK')
 
             converted_images.append(pil_img)
 
