@@ -46,6 +46,7 @@ def compute_fid(generated_images: List[Image.Image], coco_images: List[Image.Ima
     Returns:
         fid_score: The FID score (lower is better)
     """
+    coco_images = ensure_three_channels(coco_images)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = InceptionModel(device)
     
@@ -147,3 +148,43 @@ def compute_clip_score(generated_images: List[Image.Image], prompts: List[str]) 
     
     # Return average similarity score
     return float(np.mean(similarities))
+
+
+def ensure_three_channels(images):
+    """
+    Ensures all images in a list have 3 channels (RGB).
+
+    Args:
+        images: List of PIL Image objects or image arrays
+
+    Returns:
+        List of images, all with 3 channels
+    """
+    converted_images = []
+
+    for i, img in enumerate(images):
+        try:
+            # If it's already a PIL Image
+            if isinstance(img, Image.Image):
+                pil_img = img
+            else:
+                # Convert to PIL Image if it's not already
+                pil_img = Image.fromarray(img)
+
+            # Convert to RGB mode (handles all cases: L, LA, RGBA, etc.)
+            if pil_img.mode != 'RGB':
+                np_image = np.array(pil_img)
+                print(f"BEFORE: {np_image.shape}")
+                pil_img = pil_img.convert('RGB')
+                np_image = np.array(pil_img)
+                print(f"BEFORE: {np_image.shape}")
+                print('Gotcha! MDFK')
+
+            converted_images.append(pil_img)
+
+        except Exception as e:
+            print(f"Error processing image {i}: {str(e)}")
+            # Append the original to maintain list length and indexing
+            converted_images.append(img)
+
+    return converted_images
