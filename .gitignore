@@ -1,3 +1,5 @@
+eval_20250316_112338
+jpg
 fake_generated_images
 generated_images
 __pycache__
@@ -19,3 +21,4 @@ test_asr_mock.py
 verify_asr.py
 run_asr_analysis.py
 test_images/
+convert_jpg.py
