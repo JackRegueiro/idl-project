@@ -3,7 +3,7 @@ import torch
 from diffusers import DiffusionPipeline
 from evaluation.utils.metrics import compute_fid, compute_clip_score
 from evaluation.utils.datasets import load_coco
-from evaluation.utils.asr import batch_compute_asr, batch_compute_asr_methods
+from evaluation.utils.asr import batch_compute_asr_methods
 from tqdm import tqdm
 from datetime import datetime
 
@@ -18,6 +18,7 @@ def set_up_output_dir(config: dict):
         image_dir = os.path.join(output_dir, f"eval_{timestamp}")
         os.makedirs(image_dir, exist_ok=True)
         print(f"Images will be saved to: {image_dir}")
+    return image_dir
 
 def load_pipeline(config, device):
     # Load the pre-trained Stable Diffusion pipeline
@@ -29,11 +30,10 @@ def load_pipeline(config, device):
     text_encoder = TextEncoder()
 
     # Load the state dictionary
-    state_dict = torch.load(config["model_save_path"])
+    state_dict = torch.load(config["model_save_path"], map_location=device)
     text_encoder.load_state_dict(state_dict)
     text_encoder.eval()
-    
-    pipe_replaced.text_encoder = text_encoder
+    pipe_replaced.text_encoder = text_encoder.model
     return pipe_replaced
 
 def evaluate_model(config: dict) -> None:
