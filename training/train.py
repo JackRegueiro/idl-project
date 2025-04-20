@@ -69,7 +69,7 @@ def train(config: Dict[str, Any]) -> None:
     nen_loss_fn = NENLoss().to(device)
 
     # Get hyperparameters from config
-    lambda_weight = config.get("lambda_weight", 0.5) # Default to 0.5 if not specified
+    lambda_weight = config.get("lambda_weight", 0.3) # Default to 0.5 if not specified
     nudity_prompt = config.get("nudity_prompt", "nudity")
     print(f"Using lambda_weight: {lambda_weight}, nudity_prompt: '{nudity_prompt}'")
 
