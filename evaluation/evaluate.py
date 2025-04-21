@@ -37,11 +37,9 @@ def load_pipeline(config, device):
     return pipe_replaced
 
 def evaluate_model(config: dict) -> None:
-    # Create output directory if it doesn't exist
     image_dir = set_up_output_dir(config)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Load the coco dataset
     print("Start loading coco...")
     images, prompts = load_coco(
         dataset_name=config["dataset"]["name"], 
@@ -54,62 +52,54 @@ def evaluate_model(config: dict) -> None:
     print("Start loading pipeline...")
     pipe_replaced = load_pipeline(config, device)
     print("Finish loading pipeline!")
-    
-    # Define parameters for generation
+
     generated_images = []
+    generated_prompts = []
     batch_size = config["generation"]["batch_size"]
     num_samples = config["generation"]["num_eval_samples"]
-    
+
     print(f"Generating {num_samples} images...")
 
     if num_samples > len(prompts):
         print(f"Warning: num_eval_samples ({num_samples}) is larger than the dataset size ({len(prompts)}).")
     num_samples = len(prompts)
-    
-    # Generate images in batches with progress bar
+
     for i in tqdm(range(0, num_samples, batch_size)):
         batch_prompts = prompts[i:i+batch_size]
 
-        # Generate images with Stable Diffusion
         with torch.no_grad():
             batch_outputs = pipe_replaced(
                 batch_prompts,
-                height=640,  # Set custom height (default is 512)
-                width=640,   # Set custom width (default is 512)
+                height=640,
+                width=640,
             )
             print(f"Generated {len(batch_outputs.images)} images in this batch")
 
-        # Process and save images
         for j, image in enumerate(batch_outputs.images):
             generated_images.append(image)
+            generated_prompts.append(batch_prompts[j])
 
-            # Save the image if configured
             if config["output"]["save_generated_images"]:
-                # Create a filename with index and truncated prompt
                 prompt_text = batch_prompts[j]
-                # Clean up prompt for filename (limit length and remove invalid chars)
                 safe_prompt = "".join(c for c in prompt_text if c.isalnum() or c in " ._-")[:50]
                 safe_prompt = safe_prompt.replace(" ", "_")
-
-                # Save the image with index and prompt
                 filename = f"{i + j:04d}_{safe_prompt}.png"
                 image_path = os.path.join(image_dir, filename)
                 image.save(image_path)
 
-        # Free up memory
         del batch_outputs
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-    
+
+        # Periodic metric computation
+        if len(generated_images) % 100 == 0 or (i + batch_size >= num_samples):
+            fid_score = compute_fid(generated_images, images[:len(generated_images)])
+            clip_score = compute_clip_score(generated_images, generated_prompts)
+            print(f"[Eval @ {len(generated_images)} images] FID: {fid_score:.2f}, CLIP Score: {clip_score:.4f}")
+
     print(f"Generated {len(generated_images)} images")
 
-    # Compute evaluation metrics
-    fid_score = compute_fid(generated_images, images)
-    print(f"FID: {fid_score}")
-
-    clip_score = compute_clip_score(generated_images, prompts)
-    print(f"CLIP Score: {clip_score}")
-
+    # Final ASR evaluation
     asr_results = batch_compute_asr_methods(
         generated_images,
         methods=["NudeNet"],
@@ -119,41 +109,9 @@ def evaluate_model(config: dict) -> None:
 
     asr_nudenet = asr_results["NudeNet"]
     print(f"ASR (NudeNet): {asr_nudenet}")
-    
-    # Return the evaluation results for potential logging or further processing
+
     return {
         "fid": fid_score,
         "clip_score": clip_score,
         "asr_nudenet": asr_nudenet
     }
-
-
-# if __name__ == "__main__":
-#     # config dict for local testing
-#     config = {
-#         "dataset": {
-#             "name": "sayakpaul/coco-30-val-2014",
-#             "sample_size": 10000,  # Smaller sample for faster testing
-#             "seed": 42, # for data sampling
-#             "cache_dir": os.path.join(BASE_DIR, "data", "coco")
-#         },
-#         "model": {
-#             "diffusion_model_name": "stable-diffusion-v1-5/stable-diffusion-v1-5"
-#         },
-#         "generation": {
-#             "batch_size": 2,
-#             "num_inference_steps": 20,  # Fewer steps for faster generation
-#             "guidance_scale": 7.5,
-#             "num_eval_samples": 2  # Generate fewer images for quick testing
-#         },
-#         "output": {
-#             "save_generated_images": True,
-#             "output_dir": "./generated_images"
-#         },
-#         "asr": {
-#             "threshold": 0.5,
-#             "batch_size": 2
-#         }
-#     }
-#     print(os.path.join(BASE_DIR, "data", "coco"))
-#     # evaluate_model(config)
