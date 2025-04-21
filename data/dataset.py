@@ -23,7 +23,7 @@ class CoProDataset(Dataset):
         
         Args:
             data_path: Path to the CoPro dataset JSON file or directory containing the file.
-            text_encoder: A pre-trained text encoder (e.g., an instance of TextEncoder) used to generate embeddings.
+            text_encoder: An *original* pre-trained text encoder instance used for pre-calculating fixed embeddings.
             nudity_prompt: The prompt to compute the nudity vector.
             scaling_factor: Scaling factor (sg) for nudity subtraction.
             category: Category to filter (default "sexual").
@@ -31,6 +31,7 @@ class CoProDataset(Dataset):
         self.data_path = data_path
         self.category = category
         self.scaling_factor = scaling_factor
+        self.nudity_prompt = nudity_prompt
         
         # Load raw data
         self.raw_data = self._load_raw_data()
@@ -43,38 +44,44 @@ class CoProDataset(Dataset):
         
         print(f"Loaded {len(self.raw_data)} '{self.category}' prompt pairs from CoPro dataset.")
         
-        # Compute embeddings using the provided text encoder.
-        # It's assumed that text_encoder.forward returns a tensor of shape [N, embedding_dim].
-        with torch.no_grad():
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            precompute_encoder = TextEncoder().to(device)
-            self.safe_embeddings = precompute_encoder(self.safe_prompts)  # [N, D]
-            self.unsafe_embeddings = precompute_encoder(self.unsafe_prompts)  # [N, D]
-            self.nudity_vector = precompute_encoder.encode(nudity_prompt)  # [D]
+        # Compute embeddings using the provided *original* text encoder.
+        # Ensure the passed encoder is in eval mode and doesn't track gradients for precomputation
+        original_encoder = text_encoder
+        original_encoder.eval() # Ensure it's in eval mode
+        device = next(original_encoder.parameters()).device # Get device from encoder
 
-        # Normalize the nudity vector
-        self.normalized_nudity = self.nudity_vector / torch.norm(self.nudity_vector)
+        with torch.no_grad():
+            # Use the passed original_encoder directly
+            self.original_safe_embeddings = original_encoder(self.safe_prompts).cpu()  # [N, D] - Store on CPU
+            original_unsafe_embeddings = original_encoder(self.unsafe_prompts).cpu()  # [N, D] - Needed for target generation
+            self.original_nudity_vector = original_encoder.encode(self.nudity_prompt).cpu()  # [D] - Store on CPU
+
+        # Normalize the original nudity vector
+        self.normalized_original_nudity = self.original_nudity_vector / torch.norm(self.original_nudity_vector)
         
-        # Precompute normalized safe embeddings for cosine similarity
-        self.safe_norm = self.safe_embeddings / torch.norm(self.safe_embeddings, dim=1, keepdim=True)
+        # Precompute normalized original safe embeddings for cosine similarity
+        self.original_safe_norm = self.original_safe_embeddings / torch.norm(self.original_safe_embeddings, dim=1, keepdim=True)
         
         # Generate target safe vectors for each unsafe prompt
-        self.data: List[Tuple[torch.Tensor, str, str]] = []
+        self.data: List[Tuple[torch.Tensor, str, str, torch.Tensor]] = []
         for i in range(len(self.unsafe_prompts)):
-            unsafe_emb = self.unsafe_embeddings[i]  # [D]
+            unsafe_emb = original_unsafe_embeddings[i]  # [D] Use original unsafe embedding for target generation
             # Normalize unsafe embedding
             unsafe_norm = unsafe_emb / torch.norm(unsafe_emb)
-            # Compute cosine similarities with all safe embeddings (using normalized safe embeddings)
-            similarities = torch.matmul(self.safe_norm, unsafe_norm)
-            # Select safe embedding with minimum cosine similarity
+            # Compute cosine similarities with all original safe embeddings
+            similarities = torch.matmul(self.original_safe_norm, unsafe_norm)
+            # Select original safe embedding with minimum cosine similarity
             min_idx = torch.argmin(similarities).item()
-            selected_safe_emb = self.safe_embeddings[min_idx]
-            # Create target vector: subtract scaled nudity direction from the selected safe embedding
-            target_vector = selected_safe_emb - self.scaling_factor * self.normalized_nudity
-            # Store the tuple: (target safe vector, unsafe prompt, safe prompt)
-            self.data.append((target_vector, self.unsafe_prompts[i], self.safe_prompts[i]))
+            selected_safe_emb = self.original_safe_embeddings[min_idx]
+            # Create target vector: subtract scaled original nudity direction from the selected original safe embedding
+            target_vector = selected_safe_emb - self.scaling_factor * self.normalized_original_nudity
+            # Store the tuple: (target safe vector, unsafe prompt, safe prompt, original safe embedding)
+            self.data.append((target_vector, self.unsafe_prompts[i], self.safe_prompts[i], self.original_safe_embeddings[i]))
             
         print("Target safe vectors generated for all prompt pairs.")
+        # Clear potentially large tensor no longer needed after init
+        del original_unsafe_embeddings
+        del self.original_safe_norm
 
     def _load_raw_data(self) -> List[Dict[str, Any]]:
         """
@@ -118,8 +125,9 @@ class CoProDataset(Dataset):
         """
         return len(self.data)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, str, str]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, str, str, torch.Tensor]:
         """
-        Returns a tuple (target_safe_vector, unsafe_prompt, safe_prompt) for the given index.
+        Returns a tuple (target_safe_vector, unsafe_prompt, safe_prompt, original_safe_embedding)
+        for the given index.
         """
         return self.data[idx]
