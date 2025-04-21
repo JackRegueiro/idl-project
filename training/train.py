@@ -108,7 +108,7 @@ def train(config: Dict[str, Any]) -> None:
 
 
     # Get hyperparameters from config
-    lambda_weight = config.get("lambda_weight", 0.5)
+    lambda_weight = config.get("lambda_weight", 0.3)
     nudity_prompt = config.get("nudity_prompt", "nudity")
     print(f"Using lambda_weight: {lambda_weight}, nudity_prompt: '{nudity_prompt}'")
 
@@ -183,7 +183,15 @@ def train(config: Dict[str, Any]) -> None:
 
 
             # --- Combine losses (Equation 7 - Base) ---
-            total_loss = lambda_weight * sep_loss + (1 - lambda_weight) * (uen_loss + nen_loss)
+            # total_loss = lambda_weight * sep_loss + (1 - lambda_weight) * (uen_loss + nen_loss)
+
+            total_loss = lambda_weight * sep_loss \
+                         + (1 - lambda_weight) * (uen_loss + nen_loss + mcn_loss) \
+                         + ext_config.get("gamma", 0.1) * ortho_loss \
+                         + ext_config.get("delta1", 0.1) * push_loss_orig \
+                         + ext_config.get("delta2", 0.1) * push_loss_harm \
+                         + sep_loss_margin \
+                         + ext_config.get("mu", 0.1) * mmd_loss
 
             # --- Commented-out Examples for Extensions ---
             # gamma = ext_config.get("gamma", 0.1) # Example weight for ortho
