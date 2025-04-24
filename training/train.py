@@ -7,6 +7,7 @@ import yaml
 import json # For parsing potential dict arguments
 import os
 from tqdm import tqdm
+import pprint # For printing config
 
 # Assume these imports are correct relative to the project structure
 from data.dataset import CoProDataset
@@ -20,35 +21,95 @@ from losses.push_loss import PushAwayLoss
 from losses.margin_losses import MarginSEPLoss
 from losses.mmd_loss import MMDLoss
 
+
+# --- Default Configuration ---
+# Based on the structure in run.ipynb, containing only keys relevant to train.py
+DEFAULT_CONFIG = {
+    "data_path": "./CoPro Dataset/CoPro_v1.0.json",
+    "batch_size": 32,
+    "learning_rate": 1e-5,
+    "epochs": 2,
+    "scaling_factor": 200.0,
+    "model_save_path": "./trained_text_encoder.pth",
+    "lambda_weight": 0.5,
+    "nudity_prompt": "nudity",
+    "uncond_prompt": "",
+    "extensions": {
+        # Note: Activation flags (use_mcn, use_ortho, etc.) are handled separately by argparse action='store_true'
+        #       Their default presence/absence in this dict doesn't dictate if they run, the flag does.
+        "MCN": { # Placeholder name, keys are accessed directly
+            "harmful_concepts": ["violence", "hate speech"],
+            "mcn_weights": None # Defaulting to None, expect JSON string via CLI or from config file
+        },
+        "Ortho": {
+            "harm_directions_paths": [],
+            "gamma": 0.1,
+        },
+        "Push": {
+            "use_push_harm": True, # Default value for the flag if --use_push_harm is not used but --use_push is? No, flag is separate. Store the weight default here.
+            "delta1": 0.1, # Weight for original push
+            "delta2": 0.1, # Weight for harmful push
+        },
+        "Margin": {
+            "margin_s": 0.9,
+        },
+        "MMD": {
+            "mmd_sigma": 1.0,
+            "mu": 0.1
+        }
+    }
+}
+
+# Helper function to safely get nested dictionary values
+def get_nested_default(config_dict, key_path, default_value=None):
+    keys = key_path.split('.')
+    val = config_dict
+    try:
+        for key in keys:
+            # Handle potential non-dict items gracefully during traversal
+            if isinstance(val, dict):
+                 val = val[key]
+            else:
+                 # Key path leads through a non-dictionary element
+                 return default_value
+        return val
+    except KeyError:
+        # One of the keys in the path doesn't exist
+        return default_value
+    except Exception:
+         # Any other unexpected error during access
+         return default_value
+
+
 # --- Argument Parsing ---
 
 def parse_arguments() -> argparse.Namespace:
-    """Parses command-line arguments for the training script."""
+    """Parses command-line arguments for the training script, using defaults from DEFAULT_CONFIG."""
     parser = argparse.ArgumentParser(description="Train the DES Text Encoder model.")
 
     # --- Core Training Parameters ---
     parser.add_argument('--config_path', type=str, default=None,
-                        help="Path to a YAML configuration file to load base settings.")
-    parser.add_argument('--data_path', type=str, default="./CoPro Dataset/CoPro_v1.0.json",
+                        help="Path to a YAML/JSON configuration file to load base settings.")
+    parser.add_argument('--data_path', type=str, default=DEFAULT_CONFIG.get('data_path'),
                         help="Path to the CoPro dataset JSON file.")
-    parser.add_argument('--model_save_path', type=str, default="./trained_text_encoder.pth",
+    parser.add_argument('--model_save_path', type=str, default=DEFAULT_CONFIG.get('model_save_path'),
                         help="Path where the trained model state dict will be saved.")
-    parser.add_argument('--learning_rate', type=float, default=1e-5,
+    parser.add_argument('--learning_rate', type=float, default=DEFAULT_CONFIG.get('learning_rate'),
                         help="Learning rate for the AdamW optimizer.")
-    parser.add_argument('--batch_size', type=int, default=32,
+    parser.add_argument('--batch_size', type=int, default=DEFAULT_CONFIG.get('batch_size'),
                         help="Batch size for training.")
-    parser.add_argument('--epochs', type=int, default=2,
+    parser.add_argument('--epochs', type=int, default=DEFAULT_CONFIG.get('epochs'),
                         help="Number of training epochs.")
-    parser.add_argument('--scaling_factor', type=float, default=200.0,
+    parser.add_argument('--scaling_factor', type=float, default=DEFAULT_CONFIG.get('scaling_factor'),
                         help="Scaling factor (sg) for nudity vector subtraction in dataset and SEPLoss.")
-    parser.add_argument('--lambda_weight', type=float, default=0.3,
+    parser.add_argument('--lambda_weight', type=float, default=DEFAULT_CONFIG.get('lambda_weight'),
                         help="Weight for the SEP/MarginSEP loss component (lambda in Eq. 7).")
-    parser.add_argument('--nudity_prompt', type=str, default="nudity",
+    parser.add_argument('--nudity_prompt', type=str, default=DEFAULT_CONFIG.get('nudity_prompt'),
                         help="Prompt used to calculate the nudity vector.")
-    parser.add_argument('--uncond_prompt', type=str, default="",
+    parser.add_argument('--uncond_prompt', type=str, default=DEFAULT_CONFIG.get('uncond_prompt'),
                         help="Unconditional prompt for NEN/MCN loss calculation.")
 
-    # --- Loss Activation Flags ---
+    # --- Loss Activation Flags (Defaults are always False unless flag is present) ---
     parser.add_argument('--use_mcn', action='store_true',
                         help="Use MultiConceptNENLoss instead of NENLoss.")
     parser.add_argument('--use_ortho', action='store_true',
@@ -62,27 +123,26 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--use_mmd', action='store_true',
                         help="Enable MMD Loss.")
 
-    # --- Loss Weights & Parameters ---
-    parser.add_argument('--gamma', type=float, default=0.1,
+    # --- Loss Weights & Parameters (Defaults from DEFAULT_CONFIG) ---
+    parser.add_argument('--gamma', type=float, default=get_nested_default(DEFAULT_CONFIG, 'extensions.Ortho.gamma', 0.1),
                         help="Weight for Orthogonality Loss.")
-    parser.add_argument('--delta1', type=float, default=0.1,
+    parser.add_argument('--delta1', type=float, default=get_nested_default(DEFAULT_CONFIG, 'extensions.Push.delta1', 0.1),
                         help="Weight for PushAway Loss (original unsafe).")
-    parser.add_argument('--delta2', type=float, default=0.1,
+    parser.add_argument('--delta2', type=float, default=get_nested_default(DEFAULT_CONFIG, 'extensions.Push.delta2', 0.1),
                         help="Weight for PushAway Loss (harmful concepts).")
-    parser.add_argument('--mu', type=float, default=0.1,
+    parser.add_argument('--mu', type=float, default=get_nested_default(DEFAULT_CONFIG, 'extensions.MMD.mu', 0.1),
                         help="Weight for MMD Loss.")
-    parser.add_argument('--margin_s', type=float, default=0.9,
+    parser.add_argument('--margin_s', type=float, default=get_nested_default(DEFAULT_CONFIG, 'extensions.Margin.margin_s', 0.9),
                         help="Margin 's' for MarginSEPLoss.")
-    parser.add_argument('--mmd_sigma', type=float, default=1.0,
+    parser.add_argument('--mmd_sigma', type=float, default=get_nested_default(DEFAULT_CONFIG, 'extensions.MMD.mmd_sigma', 1.0),
                         help="Kernel sigma for MMDLoss.")
 
-    # --- Extension Specific Inputs ---
-    parser.add_argument('--harmful_concepts', type=str, nargs='+', default=["violence", "hate speech"],
+    # --- Extension Specific Inputs (Defaults from DEFAULT_CONFIG) ---
+    parser.add_argument('--harmful_concepts', type=str, nargs='+', default=get_nested_default(DEFAULT_CONFIG, 'extensions.MCN.harmful_concepts', []),
                         help="List of harmful concepts for MCN/PushHarm losses.")
-    # Optional weights for MCN - expecting a JSON string, or rely on config file
-    parser.add_argument('--mcn_weights', type=str, default=None,
-                        help='Optional weights for MCN as a JSON string (e.g., \'{"violence": 1.0, "hate speech": 1.2}\').')
-    parser.add_argument('--harm_directions_paths', type=str, nargs='*', default=[],
+    parser.add_argument('--mcn_weights', type=str, default=None, # Keep JSON string interface
+                        help='Optional weights for MCN as a JSON string (e.g., \'{"violence": 1.0, "hate speech": 1.2}\'). Overrides config file if provided.')
+    parser.add_argument('--harm_directions_paths', type=str, nargs='*', default=get_nested_default(DEFAULT_CONFIG, 'extensions.Ortho.harm_directions_paths', []),
                         help="Paths to saved .pt files containing harmful directions for Ortho loss.")
 
     return parser.parse_args()
@@ -90,56 +150,71 @@ def parse_arguments() -> argparse.Namespace:
 # --- Configuration Loading ---
 
 def load_config(args: argparse.Namespace) -> Dict[str, Any]:
-    """Loads configuration from file and merges with command-line arguments."""
+    """Loads configuration from file (optional) and merges with command-line arguments."""
     config = {}
     # Load base config from file if provided
     if args.config_path:
         try:
             with open(args.config_path, 'r') as f:
-                if args.config_path.endswith(".yaml") or args.config_path.endswith(".yml"):
+                if args.config_path.endswith((".yaml", ".yml")):
                     config = yaml.safe_load(f)
                 elif args.config_path.endswith(".json"):
                     config = json.load(f)
                 else:
                     print(f"Warning: Unknown config file format for {args.config_path}. Attempting YAML load.")
-                    config = yaml.safe_load(f)
+                    config = yaml.safe_load(f) or {} # Ensure config is a dict even if load fails
             print(f"Loaded base configuration from: {args.config_path}")
         except FileNotFoundError:
             print(f"Warning: Config file not found at {args.config_path}. Using defaults and CLI args.")
         except Exception as e:
             print(f"Error loading config file {args.config_path}: {e}. Using defaults and CLI args.")
 
-    # Override with command-line arguments
+    # Convert parsed args to dict. Values are either user-provided or the defaults derived from DEFAULT_CONFIG.
     cli_args = vars(args)
-    config.update(cli_args) # CLI arguments take precedence
 
-    # Parse MCN weights if provided as JSON string
-    if isinstance(config.get('mcn_weights'), str):
+    # Create a final config, starting with the loaded file config (if any)
+    # Then update with CLI args, ensuring CLI takes precedence over file
+    final_config = config.copy() # Start with file config
+    final_config.update(cli_args) # Update with CLI args (includes defaults from DEFAULT_CONFIG)
+
+    # Parse MCN weights JSON string if provided via CLI (overrides file)
+    if isinstance(final_config.get('mcn_weights'), str):
         try:
-            config['mcn_weights'] = json.loads(config['mcn_weights'])
+            final_config['mcn_weights'] = json.loads(final_config['mcn_weights'])
+            print("Parsed MCN weights from command line argument.")
         except json.JSONDecodeError:
-            print(f"Warning: Could not parse --mcn_weights JSON string: {config['mcn_weights']}. Using None.")
-            config['mcn_weights'] = None
+            print(f"Warning: Could not parse --mcn_weights JSON string: {final_config['mcn_weights']}. Check format.")
+            # Decide handling: keep None? Use file value if exists? Keep default? Let's default to None.
+            final_config['mcn_weights'] = None
+    elif 'mcn_weights' in final_config and final_config['mcn_weights'] is None:
+         # If CLI was not provided and file didn't set it, ensure it's None (or default if defined differently)
+         final_config['mcn_weights'] = None
 
-    # Remove helper args
-    config.pop('config_path', None)
 
-    # Basic validation/defaults for nested structures if needed
-    if 'extensions' not in config:
-         config['extensions'] = {} # Ensure extensions dict exists if not loaded
+    # Remove helper args not needed by train()
+    final_config.pop('config_path', None)
 
-    # Transfer relevant CLI args into extensions if not loaded from file
-    # (This assumes the config file structure matches the argparse names)
-    ext_keys_weights = ['gamma', 'delta1', 'delta2', 'mu', 'margin_s', 'mmd_sigma']
-    ext_keys_flags = ['use_mcn', 'use_ortho', 'use_push', 'use_push_harm', 'use_margin_sep', 'use_mmd']
-    ext_keys_other = ['harmful_concepts', 'mcn_weights', 'harm_directions_paths']
+    # --- Restructure into extensions sub-dictionary ---
+    # Ensure 'extensions' dict exists
+    if 'extensions' not in final_config:
+        final_config['extensions'] = {}
 
-    for key in ext_keys_weights + ext_keys_flags + ext_keys_other:
-        if key in config:
-            config['extensions'][key] = config.pop(key) # Move to extensions sub-dict
+    # Keys to move into the 'extensions' dictionary
+    ext_keys_to_move = [
+        'use_mcn', 'use_ortho', 'use_push', 'use_push_harm', 'use_margin_sep', 'use_mmd', # Flags
+        'gamma', 'delta1', 'delta2', 'mu', 'margin_s', 'mmd_sigma', # Weights/Params
+        'harmful_concepts', 'mcn_weights', 'harm_directions_paths' # Specific inputs
+    ]
 
-    return config
+    # Move keys from root config into 'extensions' sub-dict
+    # This merges CLI args/defaults into the structure expected by train()
+    for key in ext_keys_to_move:
+        if key in final_config:
+            # Ensure the key exists in the extensions dict before assigning
+            # This handles cases where extensions might be partially defined in a config file
+            final_config['extensions'][key] = final_config.pop(key)
 
+    return final_config
 
 # --- Training Function ---
 
@@ -155,7 +230,6 @@ def train(config: Dict[str, Any]) -> None:
     print(f"Training on device: {device}")
     print("Effective configuration:")
     # Print config nicely (optional, but helpful for debugging)
-    import pprint
     pprint.pprint(config)
 
 
