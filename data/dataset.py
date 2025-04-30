@@ -53,7 +53,7 @@ class CoProDataset(Dataset):
         with torch.no_grad():
             # Use the passed original_encoder directly
             self.original_safe_embeddings = original_encoder(self.safe_prompts).cpu()  # [N, D] - Store on CPU
-            original_unsafe_embeddings = original_encoder(self.unsafe_prompts).cpu()  # [N, D] - Needed for target generation
+            self.original_unsafe_embeddings = original_encoder(self.unsafe_prompts).cpu() # [N, D] - Store on CPU (NEW)
             self.original_nudity_vector = original_encoder.encode(self.nudity_prompt).cpu()  # [D] - Store on CPU
 
         # Normalize the original nudity vector
@@ -63,9 +63,9 @@ class CoProDataset(Dataset):
         self.original_safe_norm = self.original_safe_embeddings / torch.norm(self.original_safe_embeddings, dim=1, keepdim=True)
         
         # Generate target safe vectors for each unsafe prompt
-        self.data: List[Tuple[torch.Tensor, str, str, torch.Tensor]] = []
+        self.data: List[Tuple[torch.Tensor, str, str, torch.Tensor, torch.Tensor]] = [] # Added original_unsafe_embedding
         for i in range(len(self.unsafe_prompts)):
-            unsafe_emb = original_unsafe_embeddings[i]  # [D] Use original unsafe embedding for target generation
+            unsafe_emb = self.original_unsafe_embeddings[i]  # Use the stored original unsafe embedding
             # Normalize unsafe embedding
             unsafe_norm = unsafe_emb / torch.norm(unsafe_emb)
             # Compute cosine similarities with all original safe embeddings
@@ -75,12 +75,12 @@ class CoProDataset(Dataset):
             selected_safe_emb = self.original_safe_embeddings[min_idx]
             # Create target vector: subtract scaled original nudity direction from the selected original safe embedding
             target_vector = selected_safe_emb - self.scaling_factor * self.normalized_original_nudity
-            # Store the tuple: (target safe vector, unsafe prompt, safe prompt, original safe embedding)
-            self.data.append((target_vector, self.unsafe_prompts[i], self.safe_prompts[i], self.original_safe_embeddings[i]))
+            # Store the tuple: (target safe vector, unsafe prompt, safe prompt, original safe embedding, original unsafe embedding)
+            self.data.append((target_vector, self.unsafe_prompts[i], self.safe_prompts[i], self.original_safe_embeddings[i], self.original_unsafe_embeddings[i]))
             
         print("Target safe vectors generated for all prompt pairs.")
         # Clear potentially large tensor no longer needed after init
-        del original_unsafe_embeddings
+        # del original_unsafe_embeddings # Keep this one now
         del self.original_safe_norm
 
     def _load_raw_data(self) -> List[Dict[str, Any]]:
@@ -125,9 +125,9 @@ class CoProDataset(Dataset):
         """
         return len(self.data)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, str, str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, str, str, torch.Tensor, torch.Tensor]:
         """
-        Returns a tuple (target_safe_vector, unsafe_prompt, safe_prompt, original_safe_embedding)
+        Returns a tuple (target_safe_vector, unsafe_prompt, safe_prompt, original_safe_embedding, original_unsafe_embedding)
         for the given index.
         """
         return self.data[idx]
